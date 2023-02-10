@@ -94,5 +94,29 @@ namespace SocketCOMBridge.Properties {
                 this["cfg_log_enable"] = value;
             }
         }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("1")]
+        public int com_recv_type {
+            get {
+                return ((int)(this["com_recv_type"]));
+            }
+            set {
+                this["com_recv_type"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("10")]
+        public decimal com_recv_timeout {
+            get {
+                return ((decimal)(this["com_recv_timeout"]));
+            }
+            set {
+                this["com_recv_timeout"] = value;
+            }
+        }
     }
 }

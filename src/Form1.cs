@@ -10,6 +10,8 @@ using System.Windows.Forms;
 using System.Net.Sockets;
 using System.Net;
 using System.Diagnostics;
+using System.IO;
+using System.Threading;
 
 namespace SocketCOMBridge
 {
@@ -21,6 +23,7 @@ namespace SocketCOMBridge
         private SerialPort _serialPort = new SerialPort();
         private TraceSource _traceSource = new TraceSource("log");
         private byte[] _tcpReceiveBuffer = new byte[8192];
+        private Stopwatch _comReceiveStopwatch = new Stopwatch();
 
         class RichTextTraceListener : TraceListener
         {
@@ -60,6 +63,7 @@ namespace SocketCOMBridge
 
             _serialPort.DataReceived += _serialPort_DataReceived;
         }
+
         private void Form1_FormClosing(object sender, FormClosingEventArgs e)
         {
             StopBridge();
@@ -87,6 +91,7 @@ namespace SocketCOMBridge
             cb_stopbits.DataBindings.Add(new Binding(nameof(cb_stopbits.SelectedIndex), Properties.Settings.Default, nameof(Properties.Settings.Default.com_stopbits_index), true, DataSourceUpdateMode.OnPropertyChanged));
             cb_databits.DataBindings.Add(new Binding(nameof(cb_databits.SelectedIndex), Properties.Settings.Default, nameof(Properties.Settings.Default.com_databits_index), true, DataSourceUpdateMode.OnPropertyChanged));
             cb_parity.DataBindings.Add(new Binding(nameof(cb_parity.SelectedIndex), Properties.Settings.Default, nameof(Properties.Settings.Default.com_parity_index), true, DataSourceUpdateMode.OnPropertyChanged));
+            cb_com_recv_timeout.DataBindings.Add(new Binding(nameof(cb_com_recv_timeout.SelectedIndex), Properties.Settings.Default, nameof(Properties.Settings.Default.com_recv_type), true, DataSourceUpdateMode.OnPropertyChanged));
         }
 
         private void btn_start_stop_Click(object sender, EventArgs e)
@@ -250,20 +255,58 @@ namespace SocketCOMBridge
 
             if (_tcpClient.Connected == false)
                 return;
-
+            
             var stream = _tcpClient.GetStream();
 
             if (stream.CanWrite == false)
                 return;
 
-            while (_serialPort.BytesToRead > 0)
+            while(_serialPort.BytesToRead > 0)
             {
-                // 读取串口缓冲区已有的全部数据
-                byte[] bytes = new byte[_serialPort.BytesToRead];
-                int validCount = _serialPort.Read(bytes, 0, bytes.Length);
-                stream.Write(bytes, 0, validCount);
+                // 大循环用于分包读取超时后的数据的再读取,因为本事件不会再触发
 
-                _traceSource.TraceEvent(TraceEventType.Information, 1, $"COM >> TCP: {GetFriendlyText(bytes, validCount)}");
+                List<byte> buffer = new List<byte>();
+
+                if (Properties.Settings.Default.com_recv_type == 0)
+                {
+                    while (_serialPort.BytesToRead > 0)
+                    {
+                        // 读取串口缓冲区已有的全部数据
+                        byte[] bytes = new byte[_serialPort.BytesToRead];
+                        int validCount = _serialPort.Read(bytes, 0, bytes.Length);
+                        buffer.AddRange(bytes.Take(validCount));
+                    }
+                }
+                else
+                {
+                    _comReceiveStopwatch.Reset();
+                    _comReceiveStopwatch.Start();
+
+                    do
+                    {
+                        if (_serialPort.BytesToRead > 0)
+                        {
+                            byte[] bytes = new byte[_serialPort.BytesToRead];
+                            int validCount = _serialPort.Read(bytes, 0, bytes.Length);
+                            buffer.AddRange(bytes.Take(validCount));
+
+                            _comReceiveStopwatch.Reset();
+                            _comReceiveStopwatch.Start();
+                        }
+
+                        if (_comReceiveStopwatch.ElapsedMilliseconds >= Properties.Settings.Default.com_recv_timeout)
+                            break;
+
+                        Thread.Sleep(1);
+                    }
+                    while (true);
+
+                    _comReceiveStopwatch.Stop();
+                }
+
+                var data = buffer.ToArray();
+                stream.Write(data, 0, data.Length);
+                _traceSource.TraceEvent(TraceEventType.Information, 1, $"COM >> TCP: {GetFriendlyText(data, data.Length)}");
             }
         }
 
@@ -303,6 +346,11 @@ namespace SocketCOMBridge
         private void btn_clear_log_Click(object sender, EventArgs e)
         {
             richTextBox1.Clear();
+        }
+
+        private void cb_com_recv_timeout_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            nud_com_recv_timeout.Visible = label_com_recv_timeout_unit.Visible = cb_com_recv_timeout.SelectedIndex == 1;
         }
     }
 }
