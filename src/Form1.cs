@@ -290,10 +290,12 @@ namespace SocketCOMBridge
                             int validCount = _serialPort.Read(bytes, 0, bytes.Length);
                             buffer.AddRange(bytes.Take(validCount));
 
+                            // 在超时时间内数据到达则重置计时时间
                             _comReceiveStopwatch.Reset();
                             _comReceiveStopwatch.Start();
                         }
 
+                        // 一直读取, 如果超过了超时时间,则单次读取结束
                         if (_comReceiveStopwatch.ElapsedMilliseconds >= Properties.Settings.Default.com_recv_timeout)
                             break;
 
